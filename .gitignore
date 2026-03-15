@@ -1,0 +1,8 @@
+venv/
+build/
+dist/
+__pycache__/
+.DS_Store
+money_data/
+*.spec
+*.pyc
