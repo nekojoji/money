@@ -20,13 +20,13 @@ class KakeiboApp:
 
         # --- UI構築 ---
         tool_frame = ttk.Frame(root)
-        tool_frame.pack(fill='x', padx=5, pady=5)
+        tool_frame.pack(fill='x', padx=10, pady=5)
         self.entry_ym = ttk.Entry(tool_frame, width=8)
         self.entry_ym.insert(0, "202603")
-        self.entry_ym.pack(side='left', padx=2)
+        self.entry_ym.pack(side='left', padx=5)
         
         ttk.Button(tool_frame, text="リストに追加", command=self.add_list_item).pack(side='left')
-        ttk.Button(tool_frame, text="削除", command=self.delete_sheet).pack(side='left', padx=2)
+        ttk.Button(tool_frame, text="削除", command=self.delete_sheet).pack(side='left', padx=5)
         ttk.Button(tool_frame, text="保存する", command=self.save_data).pack(side='right')
 
         main_paned = ttk.PanedWindow(root, orient=tk.HORIZONTAL)
@@ -36,15 +36,16 @@ class KakeiboApp:
         list_frame = ttk.Frame(main_paned)
         main_paned.add(list_frame, weight=0)
         self.listbox = tk.Listbox(list_frame, font=("Arial", 12), width=10)
-        self.listbox.pack(expand=True, fill='both', padx=2, pady=2)
+        self.listbox.pack(expand=True, fill='both', padx=2, pady=5)
         self.listbox.bind('<<ListboxSelect>>', self.on_select_list)
 
-        # 右側家計簿エリア
-        self.right_frame = ttk.Frame(main_paned)
-        main_paned.add(self.right_frame, weight=1)
+        # 右側家計簿エリア（スクロール対応）
+        self.right_container = ttk.Frame(main_paned)
+        main_paned.add(self.right_container, weight=1)
 
-        self.lbl_total = tk.Label(root, text="収入: 0 | 支出: 0 | 収支: 0", font=("Arial", 14, "bold"), bg="#9400d3", fg="white", relief="sunken")
-        self.lbl_total.pack(fill='x', padx=5, pady=2)
+        self.lbl_total = tk.Label(root, text="収入: 0 | 支出: 0 | 収支: 0", 
+                                  font=("Arial", 16, "bold"), bg="#9400d3", fg="white", relief="sunken")
+        self.lbl_total.pack(fill='x', padx=10, pady=5)
 
         self.restore_all_sheets()
 
@@ -54,47 +55,51 @@ class KakeiboApp:
 
     def load_templates(self):
         path = os.path.join(self.base_path, "categories.txt")
-        return [line.strip() for line in open(path, "r", encoding="utf-8")] if os.path.exists(path) else []
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return [line.strip() for line in f.readlines()]
+        return []
 
     def create_sheet_ui(self, name):
-        # 3つのセクションを横並びにするメインフレーム
-        frame = ttk.Frame(self.right_frame)
-        frame.pack(expand=True, fill='both')
+        canvas = tk.Canvas(self.right_container)
+        scrollbar = ttk.Scrollbar(self.right_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        income = self.create_list_section(scrollable_frame, "収入", 0)
+        expense = self.create_list_section(scrollable_frame, "支出", 1)
+        fixed = self.create_list_section(scrollable_frame, "固定費", 2, is_fixed=True)
         
-        income = self.create_list_section(frame, "収入", 0)
-        expense = self.create_list_section(frame, "支出", 1)
-        fixed = self.create_list_section(frame, "固定費", 2, is_fixed=True)
-        
-        self.tabs[name] = {"frame": frame, "income": income, "expense": expense, "fixed": fixed}
+        self.tabs[name] = {"frame": canvas, "scrollbar": scrollbar, "income": income, "expense": expense, "fixed": fixed}
         self.load_sheet_data(name)
-        frame.pack_forget()
+        canvas.pack_forget()
+        scrollbar.pack_forget()
 
     def create_list_section(self, parent, title, col_idx, is_fixed=False):
-        # 各セクションを均等配置
-        parent.columnconfigure(col_idx, weight=1)
         frame = ttk.LabelFrame(parent, text=title)
-        frame.grid(row=0, column=col_idx, padx=2, pady=2, sticky='nsew')
+        frame.grid(row=0, column=col_idx, padx=5, pady=5, sticky='n')
         
-        # 3列の設定 (品目, 日付, 金額)
-        frame.columnconfigure(0, weight=3) # 品目
-        frame.columnconfigure(1, weight=2) # 日付
-        frame.columnconfigure(2, weight=2) # 金額
-
-        tk.Label(frame, text="品目").grid(row=0, column=0, sticky='ew')
-        tk.Label(frame, text="日付").grid(row=0, column=1, sticky='ew')
-        tk.Label(frame, text="金額").grid(row=0, column=2, sticky='ew')
+        for i, h in enumerate(["品目", "日付", "金額"]):
+            tk.Label(frame, text=h).grid(row=0, column=i, padx=2, pady=2)
         
         rows = []
-        for i in range(1, 16):
-            item = tk.Entry(frame, width=10)
-            date = tk.Entry(frame, width=6)
-            amt = tk.Entry(frame, width=8)
+        for i in range(1, 41):
+            # 品目(item)の幅を 12 -> 20 に拡大
+            item = tk.Entry(frame, width=20)
+            date = tk.Entry(frame, width=8)
+            amt = tk.Entry(frame, width=10)
             
             if is_fixed and i <= len(self.fixed_templates): item.insert(0, self.fixed_templates[i-1])
             
-            item.grid(row=i, column=0, padx=1, pady=1, sticky='ew')
-            date.grid(row=i, column=1, padx=1, pady=1, sticky='ew')
-            amt.grid(row=i, column=2, padx=1, pady=1, sticky='ew')
+            item.grid(row=i, column=0, padx=2, pady=1)
+            date.grid(row=i, column=1, padx=2, pady=1)
+            amt.grid(row=i, column=2, padx=2, pady=1)
             amt.bind("<KeyRelease>", self.update_totals)
             rows.append((item, date, amt))
         return rows
@@ -104,7 +109,6 @@ class KakeiboApp:
         if name and name not in self.tabs:
             self.listbox.insert(tk.END, name)
             self.create_sheet_ui(name)
-            self.listbox.select_clear(0, tk.END)
             self.listbox.select_set(tk.END)
             self.on_select_list(None)
 
@@ -112,8 +116,11 @@ class KakeiboApp:
         selection = self.listbox.curselection()
         if not selection: return
         name = self.listbox.get(selection[0])
-        for n, data in self.tabs.items(): data["frame"].pack_forget()
-        self.tabs[name]["frame"].pack(expand=True, fill='both')
+        for n, data in self.tabs.items(): 
+            data["frame"].pack_forget()
+            data["scrollbar"].pack_forget()
+        self.tabs[name]["frame"].pack(side="left", expand=True, fill='both')
+        self.tabs[name]["scrollbar"].pack(side="right", fill='y')
         self.update_totals()
 
     def restore_all_sheets(self):
@@ -135,6 +142,7 @@ class KakeiboApp:
             path = os.path.join(self.data_dir, f"data_{name}.json")
             if os.path.exists(path): os.remove(path)
             self.tabs[name]["frame"].destroy()
+            self.tabs[name]["scrollbar"].destroy()
             del self.tabs[name]
             self.listbox.delete(idx)
             if self.listbox.size() > 0:
